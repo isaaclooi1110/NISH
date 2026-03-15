@@ -6,7 +6,7 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  const anthropic = new Anthropic({ apiKey: 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 });
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   
   try {
     // 1. Extract 'model' and 'systemPrompt' alongside your other variables
