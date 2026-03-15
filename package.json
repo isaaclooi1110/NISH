@@ -1,0 +1,6 @@
+{
+  "name": "nish-resume",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}
