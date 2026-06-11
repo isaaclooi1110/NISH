@@ -6,6 +6,8 @@
   <title>Nish — AI Resume Optimizer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- ✅ STEP 1: Google Identity Services — required for real Google OAuth -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=Source+Serif+4:wght@300;400;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Nunito:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <style>
     .pdf-hidden { display: none !important; }
@@ -298,11 +300,11 @@
     .layout-option.selected .lo-name { color: var(--accent); }
     .lo-ats-tag { display: inline-block; margin-top: .25rem; padding: .1rem .35rem; border-radius: 4px; font-size: .6rem; font-weight: 700; background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.3); color: var(--green); }
     .sb-divider { height: 1px; background: rgba(255,255,255,.05); margin: 1.5rem 0; }
-    .preview-pane { flex: 1; overflow: auto; background: #111927; display: flex; flex-direction: column; align-items: center; padding: 2rem 1.5rem; }
+    .preview-pane { flex: 1; overflow: auto; background: #111927; display: flex; flex-direction: column; align-items: center; padding: 2rem 1.5rem; min-width: 0; }
     .preview-label { align-self: flex-start; margin-bottom: 1rem; font-size: .7rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.22); display: flex; align-items: center; gap: .5rem; }
     .preview-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: livePulse 2s ease infinite; }
     @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
-    #resumeCanvas { width: 794px; background: transparent; position: relative; }
+    #resumeCanvas { width: 794px; background: transparent; position: relative; flex-shrink: 0; }
     .rv-page { width: 794px; min-height: 1122px; background: #fff; box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.2); border-radius: 2px; padding: 60px 64px; transition: font-family .3s; position: relative; box-sizing: border-box; }
     .rv-page-sep { width: 794px; height: 32px; display: flex; align-items: center; justify-content: center; gap: .75rem; margin: 0; }
     .rv-page-sep::before, .rv-page-sep::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.12); }
@@ -319,7 +321,7 @@
     .rv-contact { font-size: 9.5px; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 0; }
     .rv-contact-item { display: flex; align-items: center; gap: 4px; margin-right: 16px; }
     .rv-body { display: grid; gap: 0; }
-    .rv-body.two-col { grid-template-columns: 200px 1fr; gap: 28px; }
+    .rv-body.two-col { grid-template-columns: 220px 1fr; gap: 24px; }
     .rv-body.one-col { grid-template-columns: 1fr; }
     .rv-section { margin-bottom: 16px; }
     .rv-section-title { font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; padding-bottom: 4px; margin-bottom: 9px; border-bottom: 1.5px solid; line-height: 1.2; }
@@ -970,13 +972,80 @@ function handleSignup() {
   setTimeout(() => { updateNavForUser(); showPage('industry'); }, 900);
 }
 
+/* ══════════════════════ GOOGLE OAUTH 2.0 (Real) ══════════════════════
+   ✅ STEP 2: Paste your Google Client ID on the line below.
+      Get it from: https://console.cloud.google.com → APIs & Services → Credentials
+      It looks like:  123456789-abcdefg.apps.googleusercontent.com
+   ════════════════════════════════════════════════════════════════════ */
+const GOOGLE_CLIENT_ID = '298134751775-sg2gsof3cdmnomgd0i5lgdshf7siiiua.apps.googleusercontent.com';
+
 function handleGoogleOAuth() {
-  const gEmail = 'google.demo@gmail.com', users = getUsers();
-  let user = users[gEmail];
-  if (!user) { user = { name: 'Google User', email: gEmail, password: '', tier: 'free', provider: 'google', createdAt: Date.now(), id: 'g_'+Date.now() }; users[gEmail] = user; saveUsers(users); showToast('Google account connected! Welcome to Nish 🎉', 'success'); }
-  else { showToast(`Welcome back via Google, ${user.name.split(' ')[0]}! 👋`, 'success'); }
-  currentUser = user; currentTier = user.tier || 'free'; saveSession(user);
-  setTimeout(() => { updateNavForUser(); showPage('industry'); }, 900);
+  if (typeof google === 'undefined' || !google?.accounts?.id) {
+    showToast('Google Sign-In is still loading — please try again in a moment.', 'error');
+    return;
+  }
+  // Initialise GIS with your Client ID and our callback every time the button
+  // is clicked — safe to call multiple times.
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCallback,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
+  // Show the One Tap overlay. Falls back gracefully if the browser blocks it.
+  google.accounts.id.prompt(notification => {
+    if (notification.isNotDisplayed()) {
+      showToast('Google One Tap was blocked by your browser. Try allowing pop-ups for this site.', 'error');
+    }
+  });
+}
+
+/* ✅ STEP 3: This callback receives the signed JWT from Google after the user
+   approves sign-in. We decode it client-side, find-or-create the local user
+   record, then hand off to the existing session helpers. */
+function handleGoogleCallback(response) {
+  try {
+    // JWT is three base64url segments separated by dots — we only need the payload (index 1).
+    const b64url = response.credential.split('.')[1];
+    // base64url → base64 → JSON
+    const base64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded  = base64 + '=='.slice(0, (4 - base64.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
+
+    const email = payload.email.toLowerCase();
+    const name  = payload.name || payload.given_name || 'Google User';
+
+    const users = getUsers();
+    let user = users[email];
+
+    if (!user) {
+      // First-time Google sign-in → create the account automatically
+      user = {
+        id:        'g_' + Date.now(),
+        name,
+        email,
+        password:  '',           // no password for OAuth users
+        tier:      'free',
+        provider:  'google',
+        createdAt: Date.now(),
+      };
+      users[email] = user;
+      saveUsers(users);
+      showToast(`Google account connected! Welcome to Nish, ${name.split(' ')[0]}! 🎉`, 'success');
+    } else {
+      // Returning user
+      showToast(`Welcome back via Google, ${user.name.split(' ')[0]}! 👋`, 'success');
+    }
+
+    currentUser = user;
+    currentTier = user.tier || 'free';
+    saveSession(user);
+    setTimeout(() => { updateNavForUser(); showPage('industry'); }, 900);
+
+  } catch (err) {
+    console.error('Google OAuth callback error:', err);
+    showToast('Google sign-in failed — please try again or use email/password.', 'error');
+  }
 }
 
 function handleLogout() { clearSession(); currentUser = null; currentTier = 'free'; closeAccount(); document.getElementById('loginEmail').value = ''; document.getElementById('loginPassword').value = ''; showPage('auth'); showToast('Logged out successfully.', 'success'); }
@@ -1064,15 +1133,43 @@ function setStep(n) {
   [1,2].forEach(i => document.getElementById('sc'+i).classList.toggle('done', i<n));
 }
 
-const PROG_MSGS = ['Analyzing job description…','Extracting ATS keywords…','Applying industry intelligence…','Rewriting resume sections…','Applying tone preference…','Building change log…','Finalizing output…'];
+const PROG_STAGE1 = [
+  { msg: 'Reading resume & job description…',        model: null },
+  { msg: 'Rewriting resume to match role…',          model: 'sonnet' },
+  { msg: 'Applying tone & keyword mapping…',         model: 'sonnet' },
+  { msg: 'Injecting industry intelligence…',         model: 'sonnet' },
+];
+const PROG_STAGE2 = [
+  { msg: 'Scanning & extracting skills…',            model: 'haiku' },
+  { msg: 'Calculating ATS match score…',             model: 'haiku' },
+  { msg: 'Generating improvement suggestions…',      model: 'haiku' },
+  { msg: 'Finalizing output…',                       model: null },
+];
+const MODEL_LABELS = {
+  sonnet: { label: 'Claude Sonnet', color: '#38bdf8', icon: '✦' },
+  haiku:  { label: 'Claude Haiku',  color: '#10b981', icon: '⚡' },
+};
 
 function showLoading() {
   document.getElementById('loadingOverlay').classList.add('show');
   const ps = document.getElementById('progressSteps');
-  if (selectedIndustry) PROG_MSGS[2] = `Applying ${selectedIndustry.name} intelligence…`;
-  ps.innerHTML = PROG_MSGS.map((m,i)=>`<div class="prog-step" id="ps${i}"><div class="prog-dot"></div>${m}</div>`).join('');
+  const allSteps = [...PROG_STAGE1, ...PROG_STAGE2];
+  if (selectedIndustry) allSteps[3].msg = `Applying ${selectedIndustry.name} intelligence…`;
+
+  ps.innerHTML = allSteps.map((s, i) => {
+    const ml = s.model ? MODEL_LABELS[s.model] : null;
+    const badge = ml
+      ? `<span style="margin-left:.5rem;font-size:.68rem;font-weight:700;padding:.1rem .45rem;border-radius:99px;background:${ml.color}22;color:${ml.color};border:1px solid ${ml.color}44;">${ml.icon} ${ml.label}</span>`
+      : '';
+    return `<div class="prog-step" id="ps${i}"><div class="prog-dot"></div>${s.msg}${badge}</div>`;
+  }).join('');
+
   let i = 0;
-  const iv = setInterval(() => { if (i>0) document.getElementById('ps'+(i-1)).className='prog-step done'; if (i<PROG_MSGS.length) { document.getElementById('ps'+i).className='prog-step active'; i++; } else clearInterval(iv); }, 500);
+  const iv = setInterval(() => {
+    if (i > 0) document.getElementById('ps' + (i - 1)).className = 'prog-step done';
+    if (i < allSteps.length) { document.getElementById('ps' + i).className = 'prog-step active'; i++; }
+    else clearInterval(iv);
+  }, 500);
   return iv;
 }
 function hideLoading(iv) { clearInterval(iv); document.getElementById('loadingOverlay').classList.remove('show'); }
@@ -1101,7 +1198,29 @@ async function callClaudeForResumeTailoring(resume, jd, title, company, tone, in
   const industryKw = industryContext ? industryContext.keywords.join(', ') : '';
   const industryName = industryContext ? industryContext.name : '';
 
-  const systemPrompt = `You are a Truth-Grounded Resume Optimization AI. Your sole task is to REFRAME what already exists in the original resume — never to invent, add, or inflate.
+  const systemPrompt = `════════════════════════════════════════════════════════
+NISH RESUME ENGINE — IDENTITY & OPERATING MANDATE
+════════════════════════════════════════════════════════
+You are the core Resume Engine for Nish, an AI-powered resume optimization platform.
+
+1. PURPOSE: You ONLY perform resume extraction, formatting, and impact-driven rewriting.
+2. BOUNDARY: If the input is not a resume or job description, refuse with exactly:
+   "I am only authorized to process resumes for Nish."
+   Do NOT answer general questions, jokes, stories, or any off-topic request.
+3. REWRITING STANDARD — STAR METHOD:
+   Every bullet you write must follow the STAR structure:
+     Situation/Task → Action (strong verb) → Result (if present in original)
+   Example: "Coordinated cross-functional team of 6 to deliver ERP migration 2 weeks ahead of schedule"
+   If no result is stated and none can be honestly inferred, end after the action.
+4. KEYWORD FOCUS: Where truthfully applicable, weave in field-specific keywords
+   from the user's selected industry. Only use keywords the candidate's experience supports.
+5. DO NOT INVENT: Never add experience, skills, metrics, or qualifications not present
+   in the original resume. Only reframe what exists.
+
+════════════════════════════════════════════════════════
+RESUME REWRITING RULES (applied after identity check above)
+════════════════════════════════════════════════════════
+You are a Truth-Grounded Resume Optimization AI. Your sole task is to REFRAME what already exists in the original resume — never to invent, add, or inflate.
 
 ══════════════════════════════════════════════
 ZERO-HALLUCINATION RULES (NON-NEGOTIABLE)
@@ -1265,7 +1384,7 @@ Output the complete rewritten resume. Education, Extracurriculars, and Skills se
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        resumeData: resume,
+        model: 'claude-sonnet-4-6',
         systemPrompt: systemPrompt,
         userInstructions: userMessage
       })
@@ -1276,14 +1395,18 @@ Output the complete rewritten resume. Education, Extracurriculars, and Skills se
       throw new Error('API error: ' + resp.status);
     }
     const data = await resp.json();
-    // Netlify chat.js returns { message: <raw text> }
     const rawText = data.message || null;
     if (!rawText) return null;
-    // Strip internal marker lines before returning — keep clean text for display/copy
+
+    // Clean for display: strip all structural markers and label prefixes
     const cleaned = rawText
       .replace(/===WORK_ENTRY_START===/g, '')
       .replace(/===WORK_ENTRY_END===/g, '')
-      .replace(/^(TITLE|COMPANY|DATE)\s*:/gm, (_, label) => `**${label}:**`)
+      .replace(/===EDU_ENTRY_START===/g, '')
+      .replace(/===EDU_ENTRY_END===/g, '')
+      .replace(/===EXTRA_ENTRY_START===/g, '')
+      .replace(/===EXTRA_ENTRY_END===/g, '')
+      .replace(/^(TITLE|COMPANY|DATE|DEGREE|INSTITUTION|CGPA|AWARD|ACTIVITY|ORG|NOTE)\s*:\s*/gm, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     // Store original (with markers) for the parser, cleaned for display
@@ -1309,7 +1432,25 @@ async function callClaudeForAnalysis(resume, jd, title, company, tone, industryC
   const toneInstruction = toneGuide[tone] || toneGuide['professional'];
 
   // ── System Prompt ─────────────────────────────────────────────────────────
-  const systemPrompt = `You are an ATS (Applicant Tracking System) Specialist and Data Analyst.
+  const systemPrompt = `════════════════════════════════════════════════════════
+NISH RESUME ENGINE — IDENTITY & OPERATING MANDATE
+════════════════════════════════════════════════════════
+You are the core Resume Engine for Nish, an AI-powered resume optimization platform.
+
+1. PURPOSE: You ONLY perform resume scanning, keyword extraction, and ATS analysis.
+2. BOUNDARY: If the input is not a resume or job description, refuse with exactly:
+   "I am only authorized to process resumes for Nish."
+3. ZERO-HALLUCINATION: Extract ONLY what literally appears in the provided resume text.
+   Do not invent, infer, or add anything not explicitly stated.
+4. KEYWORD FOCUS: Prioritise field-specific keywords from the user's selected industry
+   when scoring and extracting — only if those terms appear in the resume.
+5. OUTPUT: Your ONLY output is a single valid JSON object as specified below.
+   No markdown fences, no prose, no commentary before or after.
+
+════════════════════════════════════════════════════════
+ATS SCANNING & ANALYSIS RULES (applied after identity check above)
+════════════════════════════════════════════════════════
+You are an ATS (Applicant Tracking System) Specialist and Data Analyst.
 
 Your ONLY output is a single valid JSON object — no markdown fences, no prose, no commentary before or after.
 
@@ -1500,13 +1641,12 @@ Return ONLY this JSON structure — no other text:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        resumeData: tailoredResume,
+        model: 'claude-haiku-4-5-20251001',
         systemPrompt: systemPrompt,
         userInstructions: userMsg
       })
     });
     const data = await resp.json();
-    // Netlify chat.js returns { message: <raw text> }
     const raw   = data.message || '{}';
     const clean = raw.replace(/^```json\s*|^```\s*|```\s*$/gm, '').trim();
     return JSON.parse(clean);
@@ -1614,7 +1754,7 @@ async function simulateAI() {
 
 function renderResults(data) {
   resultData = data;
-  document.getElementById('resultsSubtitle').textContent = `${data.title} at ${data.company} · ${currentTone} tone${data.industryName?' · '+data.industryName+' primed':''} · ${currentTier==='premium'?'⭐ Premium':'Free'} run`;
+  document.getElementById('resultsSubtitle').innerHTML = `${data.title} at ${data.company} · ${currentTone} tone${data.industryName?' · '+data.industryName+' primed':''} · ${currentTier==='premium'?'⭐ Premium':'Free'} run &nbsp;<span style="font-size:.72rem;opacity:.7;">· <span style="color:#38bdf8;">✦ Sonnet</span> rewrote · <span style="color:#10b981;">⚡ Haiku</span> scanned</span>`;
 
   const kwDefs = [{ label:'Hard Skills', items:data.keywords.hardSkills },{ label:'Soft Skills', items:data.keywords.softSkills },{ label:'Industry Keywords', items:data.keywords.industry },{ label:'Key Action Verbs', items:data.keywords.verbs },{ label:'Required Qualifications', items:data.keywords.quals }];
   document.getElementById('kwGrid').innerHTML = kwDefs.map(k=>`<div class="kw-card"><div class="kw-card-title">${k.label}</div><div class="kw-tags">${k.items.length?k.items.map(t=>`<span class="kw-tag">${t}</span>`).join(''):'<span style="color:var(--muted);font-size:.78rem">None detected</span>'}</div></div>`).join('');
@@ -2316,15 +2456,13 @@ function buildExpEntryHTML(entry, globalIndex, pal) {
     ? `<div style="height:1px;background:linear-gradient(to right,${pal.sectionLine}40,transparent);margin-bottom:10px;"></div>`
     : '';
 
-  return `${separatorHTML}<div class="rv-entry" style="margin-bottom:14px;display:flex;gap:10px;">
-    <div style="min-width:72px;max-width:72px;padding-top:1px;">
-      <div style="color:${pal.mutedText};font-size:7.8px;font-style:italic;line-height:1.4;word-break:break-word;">${ed(pfx + 'Date', dateVal)}</div>
+  return `${separatorHTML}<div class="rv-entry" style="margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px;">
+      <div class="rv-entry-title" style="color:${pal.primary};font-size:10.5px;font-weight:700;line-height:1.3;flex:1;min-width:0;padding-right:8px;">${ed(pfx + 'Title', titleVal)}</div>
+      <div style="color:${pal.mutedText};font-size:8px;font-style:italic;white-space:nowrap;flex-shrink:0;">${ed(pfx + 'Date', dateVal)}</div>
     </div>
-    <div style="flex:1;min-width:0;">
-      <div class="rv-entry-title" style="color:${pal.primary};font-size:10.5px;font-weight:700;line-height:1.3;margin-bottom:1px;">${ed(pfx + 'Title', titleVal)}</div>
-      <div class="rv-entry-meta" style="color:${pal.accent};font-size:9px;font-weight:600;margin-bottom:5px;font-style:italic;">${ed(pfx + 'Company', companyVal)}</div>
-      ${bulletsHTML}
-    </div>
+    <div style="color:${pal.mutedText};font-size:8.5px;font-weight:400;font-style:italic;margin-bottom:5px;">${ed(pfx + 'Company', companyVal)}</div>
+    ${bulletsHTML}
   </div>`;
 }
 
@@ -2337,15 +2475,21 @@ function buildExpEntryHTML(entry, globalIndex, pal) {
      Page 2+: continuation header + next EXP_PER_PAGE entries (no edu/skills)
    EXP_PER_PAGE is dynamic: if ≤2 roles, all go on page 1.
 ══════════════════════════════════════════════════════════════════ */
-const EXP_PER_PAGE = 3; // max experience entries per page
+const EXP_PER_PAGE = 3; // default; overridden per layout in renderResumeCanvas
+
+function getExpPerPage() {
+  if (studioLayout === 'one-col') return 4;
+  if (studioLayout === 'sidebar-dark') return 4;
+  return 3; // two-col
+}
 
 function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
   const allEntries  = sf._expEntries && sf._expEntries.length ? sf._expEntries : [];
   const isPage1     = pageIndex === 0;
 
   // Slice of entries for this page
-  const startIdx    = pageIndex * EXP_PER_PAGE;
-  const endIdx      = startIdx + EXP_PER_PAGE;
+  const startIdx    = pageIndex * getExpPerPage();
+  const endIdx      = startIdx + getExpPerPage();
   const expSlice    = allEntries.slice(startIdx, endIdx);
 
   const showHeader   = isPage1;
@@ -2381,20 +2525,20 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
       const cgpaVal = studioFields[cgpaKey] || e.cgpa         || '';
       const awdVal  = studioFields[awdKey]  || e.award        || '';
       return `<div class="rv-entry" style="margin-bottom:${ei < eduEntries.length-1 ? '10' : '4'}px;">
-        <div class="rv-entry-title" style="color:${pal.primary};font-size:10.5px;font-weight:700;line-height:1.3;margin-bottom:1px;">${ed(degKey, degVal)}</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:${cgpaVal||awdVal?'3':'0'}px;">
-          <div class="rv-entry-meta" style="color:${pal.mutedText};font-size:9px;font-weight:500;">${ed(instKey, instVal)}</div>
-          ${dateVal ? `<div style="color:${pal.mutedText};font-size:8.5px;font-style:italic;">${ed(dateKey, dateVal)}</div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div style="color:${pal.primary};font-size:10.5px;font-weight:700;line-height:1.3;">${ed(degKey, degVal)}</div>
+          ${dateVal ? `<div style="color:${pal.mutedText};font-size:8px;font-style:italic;white-space:nowrap;flex-shrink:0;margin-left:8px;">${ed(dateKey, dateVal)}</div>` : ''}
         </div>
+        <div style="color:${pal.mutedText};font-size:8.5px;font-weight:400;font-style:italic;margin-bottom:${cgpaVal||awdVal?'3':'0'}px;">${ed(instKey, instVal)}</div>
         ${cgpaVal ? `<div style="font-size:8.5px;color:${pal.accent};font-weight:600;">CGPA: ${ed(cgpaKey, cgpaVal)}</div>` : ''}
-        ${awdVal ? `<div style="font-size:8.5px;color:${pal.mutedText};font-style:italic;">🏅 ${ed(awdKey, awdVal)}</div>` : ''}
+        ${awdVal ? `<div style="font-size:8px;color:${pal.mutedText};font-style:italic;">🏅 ${ed(awdKey, awdVal)}</div>` : ''}
       </div>`;
     }).join('')}
   </div>`;
 
   /* ── Skills HTML ─────────────────────────────────────────── */
   const skillsHTML = `<div class="rv-section" style="margin-bottom:14px;">${ST('Technical Skills')}
-    <div class="rv-skill-cloud">${chips}</div>
+    <div class="rv-skill-cloud" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;">${chips}</div>
   </div>`;
 
   /* ── Extracurriculars HTML ────────────────────────────────── */
@@ -2408,12 +2552,12 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
       const noteVal = studioFields[noteKey] || e.note     || '';
       const dateVal = studioFields[dateKey] || e.date     || '';
       if (!actVal) return '';
-      return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+      return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:7px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:9.5px;font-weight:700;color:${pal.primary};line-height:1.3;">${ed(actKey, actVal)}${e.org ? `<span style="font-weight:400;color:${pal.mutedText};"> · ${e.org}</span>` : ''}</div>
           ${noteVal ? `<div style="font-size:8.5px;color:${pal.mutedText};line-height:1.5;font-style:italic;">${ed(noteKey, noteVal)}</div>` : ''}
         </div>
-        ${dateVal ? `<div style="font-size:8px;color:${pal.mutedText};white-space:nowrap;font-style:italic;padding-top:1px;">${ed(dateKey, dateVal)}</div>` : ''}
+        ${dateVal ? `<div style="font-size:8px;color:${pal.mutedText};white-space:nowrap;font-style:italic;padding-top:1px;flex-shrink:0;">${ed(dateKey, dateVal)}</div>` : ''}
       </div>`;
     }).join('')}
   </div>` : '';
@@ -2424,10 +2568,9 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
     <div class="rv-section" style="margin-bottom:14px;">${ST('Core Competencies')}
       ${ss.map(s=>`<div style="font-size:9px;color:#333;line-height:1.6;padding-left:10px;position:relative;"><span style="position:absolute;left:2px;">·</span>${s}</div>`).join('')}
     </div>
-    ${selectedIndustry ? `<div class="rv-section" style="margin-bottom:14px;">${ST(selectedIndustry.name + ' Expertise')}
+    ${selectedIndustry ? `<div class="rv-section" style="margin-bottom:14px;">${ST(selectedIndustry.name + ' Keywords')}
       ${selectedIndustry.keywords.slice(0,6).map(k=>`<div style="font-size:9px;color:#333;line-height:1.6;padding-left:10px;position:relative;"><span style="position:absolute;left:2px;">·</span>${k}</div>`).join('')}
-    </div>` : ''}
-    ${extraHTML}`;
+    </div>` : ''}`;
 
   /* ── Main content column ─────────────────────────────────── */
   const mainHTML = `
@@ -2449,7 +2592,10 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
           <span>📍 ${ed('location', sf.location)}</span>
         </div>
       </div>`
-    : `<div style="font-size:8px;color:${pal.mutedText};text-align:right;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid ${pal.sectionLine};">${ed('name', sf.name)} — continued</div>`;
+    : `<div style="background:${pal.headerBg};padding:10px 24px;margin:-60px -64px 18px -64px;display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:11px;font-weight:700;color:${pal.headerText};opacity:.7;font-family:${ff};">${ed('name', sf.name)}</div>
+        <div style="font-size:8px;color:${pal.headerText};opacity:.5;font-style:italic;">— continued —</div>
+      </div>`;
 
   const headerOneCol = showHeader
     ? `<div class="rv-header" style="border-bottom:2px solid ${pal.sectionLine};padding-bottom:14px;margin-bottom:18px;">
@@ -2462,13 +2608,23 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
           <span>📍 ${ed('location', sf.location)}</span>
         </div>
       </div>`
-    : `<div style="font-size:8px;color:${pal.mutedText};text-align:right;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid ${pal.sectionLine};">${ed('name', sf.name)} — continued</div>`;
+    : `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:8px;border-bottom:1.5px solid ${pal.sectionLine};">
+        <div style="font-size:10px;font-weight:700;color:${pal.primary};font-family:${ff};">${ed('name', sf.name)}</div>
+        <div style="font-size:8px;color:${pal.mutedText};font-style:italic;">— continued —</div>
+      </div>`;
 
   /* ── Assemble page ───────────────────────────────────────── */
   if (isTwoCol) {
+    const page2SidebarHTML = `
+      <div style="border-right:1px solid ${pal.sectionLine}22;padding-right:16px;">
+        ${skillsHTML}
+        <div class="rv-section" style="margin-bottom:14px;">${ST('Core Competencies')}
+          ${ss.map(s=>`<div style="font-size:9px;color:#333;line-height:1.6;padding-left:10px;position:relative;"><span style="position:absolute;left:2px;">·</span>${s}</div>`).join('')}
+        </div>
+      </div>`;
     return `${headerTwoCol}
       <div class="rv-body two-col">
-        <div>${showEdSkills ? sidebarHTML : ''}</div>
+        <div style="border-right:1px solid ${pal.sectionLine}22;padding-right:12px;">${showEdSkills ? sidebarHTML + eduHTML + extraHTML : page2SidebarHTML}</div>
         <div>${mainHTML}</div>
       </div>`;
   } else {
@@ -2486,8 +2642,8 @@ function buildResumePageHTML(pageIndex, sf, pal, ff, isTwoCol, chips, ss) {
 function buildSidebarDarkPageHTML(pageIndex, sf, pal, ff, hs, ss) {
   const isPage1    = pageIndex === 0;
   const allEntries = sf._expEntries && sf._expEntries.length ? sf._expEntries : [];
-  const startIdx   = pageIndex * EXP_PER_PAGE;
-  const expSlice   = allEntries.slice(startIdx, startIdx + EXP_PER_PAGE);
+  const startIdx   = pageIndex * getExpPerPage();
+  const expSlice   = allEntries.slice(startIdx, startIdx + getExpPerPage());
 
   const sidebarBg  = pal.primary;
   const sidebarTxt = pal.headerText || '#ffffff';
@@ -2527,11 +2683,11 @@ function buildSidebarDarkPageHTML(pageIndex, sf, pal, ff, hs, ss) {
     return `
       ${notFirst ? `<div style="height:1px;background:${accentCol};opacity:.12;margin:10px 0;"></div>` : ''}
       <div class="rv-entry" style="margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">
-          <div style="font-size:11px;font-weight:800;color:#1a1a2e;line-height:1.25;flex:1;">${ed(pfx + 'Title', titleVal)}</div>
-          <div style="font-size:8px;font-weight:600;color:#fff;background:${sidebarBg};padding:2px 7px;border-radius:3px;white-space:nowrap;margin-left:8px;margin-top:1px;flex-shrink:0;">${ed(pfx + 'Date', dateVal)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px;">
+          <div style="font-size:11px;font-weight:800;color:#1a1a2e;line-height:1.25;flex:1;min-width:0;padding-right:8px;">${ed(pfx + 'Title', titleVal)}</div>
+          <div style="font-size:8px;color:#888;white-space:nowrap;font-style:italic;flex-shrink:0;">${ed(pfx + 'Date', dateVal)}</div>
         </div>
-        <div style="font-size:9px;font-weight:600;color:${accentCol};font-style:italic;margin-bottom:6px;">${ed(pfx + 'Company', companyVal)}</div>
+        <div style="font-size:8.5px;font-weight:400;color:#666;font-style:italic;margin-bottom:6px;">${ed(pfx + 'Company', companyVal)}</div>
         ${bulletsHTML}
       </div>`;
   }).join('');
@@ -2555,9 +2711,11 @@ function buildSidebarDarkPageHTML(pageIndex, sf, pal, ff, hs, ss) {
         const cgpaVal = studioFields[cgpaKey] || e.cgpa         || '';
         const awdVal  = studioFields[awdKey]  || e.award        || '';
         return `<div class="rv-entry" style="margin-bottom:${ei < sdkEduEntries.length-1 ? '10' : '4'}px;">
-          <div style="font-size:10.5px;font-weight:800;color:#1a1a2e;margin-bottom:2px;line-height:1.3;">${ed(degKey, degVal)}</div>
-          <div style="font-size:9px;color:${accentCol};font-weight:600;font-style:italic;margin-bottom:2px;">${ed(instKey, instVal)}</div>
-          <div style="font-size:8.5px;color:#666;margin-bottom:${cgpaVal?'2':'0'}px;">${ed(dateKey, dateVal)}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <div style="font-size:10.5px;font-weight:800;color:#1a1a2e;line-height:1.3;">${ed(degKey, degVal)}</div>
+            <div style="font-size:8px;color:#888;font-style:italic;white-space:nowrap;flex-shrink:0;margin-left:8px;">${ed(dateKey, dateVal)}</div>
+          </div>
+          <div style="font-size:8.5px;font-weight:400;color:#666;font-style:italic;margin-bottom:${cgpaVal?'2':'0'}px;">${ed(instKey, instVal)}</div>
           ${cgpaVal ? `<div style="font-size:8.5px;font-weight:600;color:${accentCol};">CGPA: ${ed(cgpaKey, cgpaVal)}</div>` : ''}
           ${awdVal  ? `<div style="font-size:8px;color:#888;font-style:italic;">🏅 ${ed(awdKey, awdVal)}</div>` : ''}
         </div>`;
@@ -2627,7 +2785,7 @@ function buildSidebarDarkPageHTML(pageIndex, sf, pal, ff, hs, ss) {
 
   /* Sidebar HTML */
   const sidebarHTML = `
-    <div style="background:${sidebarBg};width:220px;min-height:1002px;padding:28px 20px;box-sizing:border-box;position:relative;flex-shrink:0;">
+    <div style="background:${sidebarBg};width:220px;min-height:1122px;padding:28px 20px;box-sizing:border-box;flex-shrink:0;">
       ${isPage1 ? `
         <div style="margin-bottom:22px;">
           <div style="font-size:18px;font-weight:900;color:${sidebarTxt};line-height:1.15;letter-spacing:-.01em;font-family:${ff};">${ed('name', sf.name)}</div>
@@ -2645,9 +2803,9 @@ function buildSidebarDarkPageHTML(pageIndex, sf, pal, ff, hs, ss) {
     </div>`;
 
   /* Assemble full page — no outer padding since sidebar handles its own */
-  return `<div style="display:flex;min-height:1002px;margin:-60px -64px;border-radius:2px;overflow:hidden;">
+  return `<div style="display:flex;min-height:1122px;margin:-60px -64px;border-radius:2px 2px 0 0;">
     ${sidebarHTML}
-    <div style="flex:1;padding:36px 36px 36px 32px;background:#fff;overflow:hidden;">
+    <div style="flex:1;padding:36px 36px 36px 32px;background:#fff;min-width:0;">
       ${rightHTML}
     </div>
   </div>`;
@@ -2672,7 +2830,7 @@ function renderResumeCanvas() {
 
   const allEntries   = sf._expEntries && sf._expEntries.length ? sf._expEntries : [];
   // Auto-compute pages needed to show all entries, respecting the manual studioPages setting
-  const pagesNeeded  = Math.max(1, Math.ceil(allEntries.length / EXP_PER_PAGE));
+  const pagesNeeded  = Math.max(1, Math.ceil(allEntries.length / getExpPerPage()));
   const totalPages   = Math.max(studioPages, pagesNeeded);
 
   // Update studioPages if we need more pages than currently set
@@ -2966,7 +3124,7 @@ document.getElementById('forgotPasswordModal').addEventListener('click', functio
 
 
 <script>
-/* API key is managed server-side — see server.js */
+/* API key is stored in Netlify environment variables as ANTHROPIC_API_KEY */
 </script>
 </body>
 </html>
